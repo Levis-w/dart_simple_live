@@ -1,0 +1,54 @@
+name: My Custom Build (No Keys)
+
+on:
+  workflow_dispatch: # 允许手动点击按钮触发
+
+jobs:
+  build-android-windows:
+    name: Build Android & Windows
+    runs-on: windows-latest # 统一用 Windows 环境编译，省事
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev # 使用 dev 分支代码（根据你提供的原文件）
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.0" # 稍微降低版本以保证稳定性，或者用 stable
+          channel: 'stable'
+
+      - name: Enable Windows Support
+        run: flutter config --enable-windows-desktop
+
+      - name: Get Dependencies
+        working-directory: ./simple_live_app
+        run: flutter pub get
+
+      # --- Android 部分 (构建 Debug 版) ---
+      - name: Build Android APK (Debug)
+        working-directory: ./simple_live_app
+        # 这里改成了 --debug，这样就不需要签名文件了
+        run: flutter build apk --debug
+
+      # --- Windows 部分 (构建 Release 版) ---
+      # Windows 不需要密钥也能构建 Release 版
+      - name: Build Windows EXE
+        working-directory: ./simple_live_app
+        run: flutter build windows --release
+
+      # --- 打包并上传 ---
+      - name: Compress Windows
+        run: Compress-Archive -Path simple_live_app/build/windows/x64/runner/release/* -DestinationPath windows_app.zip
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-builds
+          path: |
+            simple_live_app/build/app/outputs/flutter-apk/app-debug.apk
+            windows_app.zip
