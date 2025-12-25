@@ -1,4 +1,4 @@
-name: Custom Build (Latest Flutter)
+name: Custom Build (Fixed Key Error)
 
 on:
   workflow_dispatch: # 手动触发
@@ -9,24 +9,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: master  # 确保拉取 master 分支
+          ref: master
 
       - uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
 
-      # --- 修改点：不再指定具体版本，直接用 stable ---
       - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable' 
+          channel: 'stable'
           cache: true
 
       - name: Get Dependencies
         working-directory: ./simple_live_app
         run: flutter pub get
 
-      # 构建 Debug 包 (跳过签名)
+      # --- 关键修复：生成假的签名配置，防止 Gradle 报错 ---
+      - name: Create Dummy Key Properties
+        run: |
+          cd simple_live_app/android
+          # 写入假数据，骗过 build.gradle.kts 的检查
+          echo 'storePassword=123456' > key.properties
+          echo 'keyPassword=123456' >> key.properties
+          echo 'keyAlias=dummy' >> key.properties
+          echo 'storeFile=dummy.jks' >> key.properties
+          # 生成一个空文件作为 keystore，防止脚本检查文件是否存在
+          touch dummy.jks
+
+      # 构建 Debug 包
       - name: Build Android APK (Debug)
         working-directory: ./simple_live_app
         run: flutter build apk --debug
@@ -44,7 +55,6 @@ jobs:
         with:
           ref: master
 
-      # --- 修改点：同上，使用最新 stable ---
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
