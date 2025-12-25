@@ -1,54 +1,61 @@
-name: Build Android Only
+name: Build Release Android (No Watermark)
 
 on:
-  workflow_dispatch: # 允许手动点击按钮触发
+  workflow_dispatch: # 手动触发
 
 jobs:
-  build-android:
+  build-android-release:
     runs-on: ubuntu-latest
     steps:
-      # 1. 下载代码 (Master主线分支)
+      # 1. 拉取代码
       - uses: actions/checkout@v4
         with:
           ref: master
 
-      # 2. 配置 Java 环境
+      # 2. 设置 Java
       - uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
 
-      # 3. 配置 Flutter 环境 (使用最新稳定版)
+      # 3. 设置 Flutter (最新版)
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
 
-      # 4. 下载项目依赖
+      # 4. 下载依赖
       - name: Get Dependencies
         working-directory: ./simple_live_app
         run: flutter pub get
 
-      # 5. 关键修复：生成假的签名配置，防止 Gradle 报错
-      - name: Create Dummy Key Properties
+      # 5. 【核心步骤】生成临时签名证书
+      # 我们用 keytool 命令现场造一个证书，并配置 key.properties
+      # 这样就能正常编译 Release 版了！
+      - name: Generate Keystore & Properties
+        working-directory: ./simple_live_app/android
         run: |
-          cd simple_live_app/android
-          # 写入假数据，骗过 build.gradle.kts 的检查
+          # 1. 生成一个有效期限 10000 天的临时证书文件 (upload-keystore.jks)
+          keytool -genkey -v -keystore upload-keystore.jks \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias upload -dname "CN=Android,O=Android,C=US" \
+            -storepass 123456 -keypass 123456
+
+          # 2. 生成配置文件告诉 Gradle 去用这个证书
           echo 'storePassword=123456' > key.properties
           echo 'keyPassword=123456' >> key.properties
-          echo 'keyAlias=dummy' >> key.properties
-          echo 'storeFile=dummy.jks' >> key.properties
-          # 生成一个空文件作为 keystore，防止脚本检查文件是否存在
-          touch dummy.jks
+          echo 'keyAlias=upload' >> key.properties
+          echo 'storeFile=upload-keystore.jks' >> key.properties
 
-      # 6. 开始编译 (Debug版，免签名)
-      - name: Build Android APK (Debug)
+      # 6. 编译正式版 (Release)
+      # 此时已经有证书了，所以可以用 --release
+      - name: Build Android APK (Release)
         working-directory: ./simple_live_app
-        run: flutter build apk --debug
+        run: flutter build apk --release
 
-      # 7. 上传编译结果
-      - name: Upload APK
+      # 7. 上传结果
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-debug-app
-          path: simple_live_app/build/app/outputs/flutter-apk/app-debug.apk
+          name: simple-live-release
+          path: simple_live_app/build/app/outputs/flutter-apk/app-release.apk
