@@ -1,16 +1,15 @@
-name: My Custom Build (No Keys)
+name: Custom Build (Fixed)
 
 on:
-  workflow_dispatch: # 允许手动点击按钮触发
+  workflow_dispatch: # 手动触发
 
 jobs:
-  build-android-windows:
-    name: Build Android & Windows
-    runs-on: windows-latest # 统一用 Windows 环境编译，省事
+  build-android:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: dev # 使用 dev 分支代码（根据你提供的原文件）
+          ref: master  # <--- 已修改：改为 master 分支，解决 fetch 错误
 
       - uses: actions/setup-java@v4
         with:
@@ -19,7 +18,33 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.22.0" # 稍微降低版本以保证稳定性，或者用 stable
+          flutter-version: "3.22.0"
+          channel: 'stable'
+
+      - name: Get Dependencies
+        working-directory: ./simple_live_app
+        run: flutter pub get
+
+      # 改为构建 Debug 包，跳过签名验证，保证你能安装
+      - name: Build Android APK (Debug)
+        working-directory: ./simple_live_app
+        run: flutter build apk --debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-app
+          path: simple_live_app/build/app/outputs/flutter-apk/app-debug.apk
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master  # <--- 已修改：改为 master 分支
+
+      - uses: subosito/flutter-action@v2
+        with:
           channel: 'stable'
 
       - name: Enable Windows Support
@@ -29,26 +54,15 @@ jobs:
         working-directory: ./simple_live_app
         run: flutter pub get
 
-      # --- Android 部分 (构建 Debug 版) ---
-      - name: Build Android APK (Debug)
-        working-directory: ./simple_live_app
-        # 这里改成了 --debug，这样就不需要签名文件了
-        run: flutter build apk --debug
-
-      # --- Windows 部分 (构建 Release 版) ---
-      # Windows 不需要密钥也能构建 Release 版
       - name: Build Windows EXE
         working-directory: ./simple_live_app
         run: flutter build windows --release
 
-      # --- 打包并上传 ---
       - name: Compress Windows
         run: Compress-Archive -Path simple_live_app/build/windows/x64/runner/release/* -DestinationPath windows_app.zip
 
-      - name: Upload Artifacts
+      - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
-          name: my-builds
-          path: |
-            simple_live_app/build/app/outputs/flutter-apk/app-debug.apk
-            windows_app.zip
+          name: windows-app
+          path: windows_app.zip
