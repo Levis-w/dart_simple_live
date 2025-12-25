@@ -1,4 +1,4 @@
-name: Build Release Android (No Watermark)
+name: Build Release Android (Fixed Path)
 
 on:
   workflow_dispatch: # 手动触发
@@ -7,53 +7,46 @@ jobs:
   build-android-release:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取代码
       - uses: actions/checkout@v4
         with:
           ref: master
 
-      # 2. 设置 Java
       - uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
 
-      # 3. 设置 Flutter (最新版)
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
 
-      # 4. 下载依赖
       - name: Get Dependencies
         working-directory: ./simple_live_app
         run: flutter pub get
 
-      # 5. 【核心步骤】生成临时签名证书
-      # 我们用 keytool 命令现场造一个证书，并配置 key.properties
-      # 这样就能正常编译 Release 版了！
+      # --- 修复点：调整证书生成路径 ---
       - name: Generate Keystore & Properties
         working-directory: ./simple_live_app/android
         run: |
-          # 1. 生成一个有效期限 10000 天的临时证书文件 (upload-keystore.jks)
-          keytool -genkey -v -keystore upload-keystore.jks \
+          # 1. 重点修改：把 upload-keystore.jks 生成到 app/ 子目录下
+          # 这样 build.gradle 在 app 目录运行时就能直接找到了
+          keytool -genkey -v -keystore app/upload-keystore.jks \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -alias upload -dname "CN=Android,O=Android,C=US" \
             -storepass 123456 -keypass 123456
 
-          # 2. 生成配置文件告诉 Gradle 去用这个证书
+          # 2. 生成 key.properties (这个文件留在 android/ 根目录不动)
           echo 'storePassword=123456' > key.properties
           echo 'keyPassword=123456' >> key.properties
           echo 'keyAlias=upload' >> key.properties
+          # 指向文件名即可，因为文件现在就在 app 目录里
           echo 'storeFile=upload-keystore.jks' >> key.properties
 
-      # 6. 编译正式版 (Release)
-      # 此时已经有证书了，所以可以用 --release
       - name: Build Android APK (Release)
         working-directory: ./simple_live_app
         run: flutter build apk --release
 
-      # 7. 上传结果
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
